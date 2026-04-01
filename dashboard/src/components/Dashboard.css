@@ -166,3 +166,20 @@
 .btn-retry:hover {
   background: #4f46e5;
 }
+
+/* Import link button in header */
+.btn-import-link {
+  display: inline-flex;
+  align-items: center;
+  background: #6366f1 !important;
+  color: #ffffff !important;
+  border-color: #6366f1 !important;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.btn-import-link:hover {
+  background: #4f46e5 !important;
+  border-color: #4f46e5 !important;
+}

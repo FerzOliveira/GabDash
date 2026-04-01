@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
-import { Users, TrendingDown, BarChart3, Activity, Loader2 } from "lucide-react";
+import { Users, TrendingDown, BarChart3, Activity, Loader2, Upload } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   BarChart,
   Bar,
@@ -76,22 +77,49 @@ const MONTH_NAMES = [
 ];
 
 export default function Dashboard() {
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const navigate = useNavigate();
   const [filtro, setFiltro] = useState("TODOS");
   const [filtroModalidade, setFiltroModalidade] = useState("TODOS");
+  const [needsImport, setNeedsImport] = useState(false);
+
+  // Month selection
+  const [meses, setMeses] = useState([]);
+  const [mesSelecionado, setMesSelecionado] = useState("");
 
   // API data
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = useCallback(async () => {
+  // Fetch available months
+  const fetchMeses = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/dashboard/months`);
+      if (res.ok) {
+        const list = await res.json();
+        setMeses(list);
+      }
+    } catch {
+      // ignore – months selector will just be empty
+    }
+  }, []);
+
+  const fetchData = useCallback(async (mes) => {
     setLoading(true);
     setError(null);
+    setNeedsImport(false);
     try {
-      const res = await fetch(`${API_BASE}/dashboard?year=${year}&month=${month}`);
+      const url = mes
+        ? `${API_BASE}/dashboard?mes=${encodeURIComponent(mes)}`
+        : `${API_BASE}/dashboard`;
+      const res = await fetch(url);
+      if (res.status === 404) {
+        const body = await res.json();
+        if (body.needsImport) {
+          setNeedsImport(true);
+          return;
+        }
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
@@ -100,11 +128,15 @@ export default function Dashboard() {
     } finally {
       setLoading(false);
     }
-  }, [year, month]);
+  }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchMeses();
+  }, [fetchMeses]);
+
+  useEffect(() => {
+    fetchData(mesSelecionado || null);
+  }, [fetchData, mesSelecionado]);
 
   // ─── Derived / filtered data ───
   const contratosFiltered = useMemo(() => {
@@ -209,12 +241,26 @@ export default function Dashboard() {
       ? ((totalEvasoesFiltrado / (totalAlunosFiltrado + totalEvasoesFiltrado)) * 100).toFixed(1)
       : "0.0";
 
-  // ─── Loading / Error states ───
+  // ─── Loading / Error / NeedsImport states ───
   if (loading) {
     return (
       <div className="dashboard loading-screen">
         <Loader2 className="spinner" size={48} />
-        <p>Carregando dados da API...</p>
+        <p>Carregando dados...</p>
+      </div>
+    );
+  }
+  if (needsImport) {
+    return (
+      <div className="dashboard loading-screen">
+        <Upload size={48} style={{ color: "#f59e0b" }} />
+        <p style={{ fontSize: "1.1rem", color: "#374151", textAlign: "center" }}>
+          Nenhum dado importado ainda.<br />
+          Importe os arquivos necessários para visualizar o dashboard.
+        </p>
+        <button className="btn-retry" onClick={() => navigate("/importar")}>
+          Ir para Importação
+        </button>
       </div>
     );
   }
@@ -222,7 +268,7 @@ export default function Dashboard() {
     return (
       <div className="dashboard loading-screen">
         <p className="error-text">Erro ao carregar dados: {error}</p>
-        <button className="btn-retry" onClick={fetchData}>
+        <button className="btn-retry" onClick={() => fetchData(mesSelecionado || null)}>
           Tentar novamente
         </button>
       </div>
@@ -235,28 +281,37 @@ export default function Dashboard() {
         <div>
           <h1>GabDash</h1>
           <p className="header-subtitle">
-            Painel de Controle — {MONTH_NAMES[month - 1]} {year}
+            Painel de Controle — {data?.mes ? (() => {
+              const [y, m] = data.mes.split("-");
+              return `${MONTH_NAMES[parseInt(m, 10) - 1]} ${y}`;
+            })() : ""}
           </p>
         </div>
         <div className="filtros-wrapper">
-          <select
-            className="filtro-select"
-            value={`${year}-${month}`}
-            onChange={(e) => {
-              const [y, m] = e.target.value.split("-").map(Number);
-              setYear(y);
-              setMonth(m);
-            }}
+          <button
+            className="filtro-select btn-import-link"
+            onClick={() => navigate("/importar")}
           >
-            {Array.from({ length: 12 }, (_, i) => {
-              const m = i + 1;
-              return (
-                <option key={m} value={`${year}-${m}`}>
-                  {MONTH_NAMES[i]} {year}
-                </option>
-              );
-            })}
-          </select>
+            <Upload size={16} style={{ marginRight: 6 }} />
+            Importar Dados
+          </button>
+          {meses.length > 0 && (
+            <select
+              className="filtro-select"
+              value={mesSelecionado}
+              onChange={(e) => setMesSelecionado(e.target.value)}
+            >
+              <option value="">Mais recente</option>
+              {meses.map((m) => {
+                const [y, mo] = m.split("-");
+                return (
+                  <option key={m} value={m}>
+                    {MONTH_NAMES[parseInt(mo, 10) - 1]} {y}
+                  </option>
+                );
+              })}
+            </select>
+          )}
           <select
             className="filtro-select"
             value={filtro}
@@ -432,7 +487,7 @@ export default function Dashboard() {
       </section>
 
       <footer className="dashboard-footer">
-        <p>Dados via Next Fit API — GabDash</p>
+        <p>Dados importados da base local — GabDash</p>
       </footer>
     </div>
   );
