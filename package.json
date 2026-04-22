@@ -1,0 +1,9 @@
+{
+  "name": "gabdash",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "cd dashboard && npm install && npm run build",
+    "start": "cd server && node index.js",
+    "dev": "npm run build && npm run start"
+  }
+}

@@ -1,39 +1,67 @@
 const express = require("express");
-const { getDashboardData } = require("../services/dashboardService");
+const { getDashboardDataFromDb, hasImportedData } = require("../services/dashboardDbService");
+const { getAvailableMonths } = require("../services/importService");
 
 const router = express.Router();
 
-// In-memory cache: key = "YYYY-MM" → { data, fetchedAt }
+// In-memory cache: key = month (or "latest") → { data, fetchedAt }
 const cache = {};
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 /**
- * GET /api/dashboard?year=2025&month=6
+ * GET /api/dashboard/months
+ * Returns the list of months that have imported data.
+ */
+router.get("/dashboard/months", async (_req, res) => {
+  try {
+    const months = await getAvailableMonths();
+    res.json(months);
+  } catch (err) {
+    console.error("[API] Erro ao buscar meses:", err);
+    res.status(500).json({ error: "Erro ao buscar meses disponíveis", details: err.message });
+  }
+});
+
+/**
+ * GET /api/dashboard?mes=2026-03
  *
- * Returns processed dashboard data for the given month.
- * If no params supplied, defaults to current month.
+ * Returns processed dashboard data from the local database.
+ * Optional query param `mes` filters by month (YYYY-MM). Defaults to latest.
  */
 router.get("/dashboard", async (req, res) => {
   try {
-    const now = new Date();
-    const year = parseInt(req.query.year, 10) || now.getFullYear();
-    const month = parseInt(req.query.month, 10) || now.getMonth() + 1;
-    const key = `${year}-${String(month).padStart(2, "0")}`;
+    const mes = req.query.mes || null;
 
-    // Check cache
+    // Validate mes format if provided
+    if (mes && !/^\d{4}-\d{2}$/.test(mes)) {
+      return res.status(400).json({ error: "Formato de mês inválido. Use YYYY-MM." });
+    }
+
+    const hasData = await hasImportedData(mes);
+    if (!hasData) {
+      return res.status(404).json({
+        error: "Nenhum dado importado",
+        needsImport: true,
+        message: mes
+          ? `Não há dados importados para ${mes}. Importe os arquivos deste mês.`
+          : "Importe os arquivos necessários na tela de importação.",
+      });
+    }
+
+    const key = mes || "latest";
     if (cache[key] && Date.now() - cache[key].fetchedAt < CACHE_TTL_MS) {
       return res.json(cache[key].data);
     }
 
-    console.log(`[API] Fetching dashboard data for ${key}...`);
-    const data = await getDashboardData(year, month);
+    console.log(`[API] Buscando dados do dashboard no banco (mês: ${mes || "mais recente"})...`);
+    const data = await getDashboardDataFromDb(mes);
 
     cache[key] = { data, fetchedAt: Date.now() };
-    console.log(`[API] Dashboard data for ${key} cached.`);
+    console.log("[API] Dados do dashboard carregados do banco.");
 
     res.json(data);
   } catch (err) {
-    console.error("[API] Error fetching dashboard data:", err);
+    console.error("[API] Erro ao buscar dados do dashboard:", err);
     res.status(500).json({ error: "Erro ao buscar dados do dashboard", details: err.message });
   }
 });

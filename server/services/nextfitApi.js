@@ -1,7 +1,7 @@
 const fetch = require("node-fetch");
 
 const BASE_URL = process.env.NEXTFIT_API_URL || "https://integracao.nextfit.com.br/api/v1";
-const API_KEY = process.env.NEXTFIT_API_KEY || "yRcem_XbiyDIhjh64V8mkrRdm6L6MUwr";
+const API_KEY = process.env.NEXTFIT_API_KEY;
 const PAGE_SIZE = 30;
 const REQUEST_DELAY_MS = 400; // delay between paginated requests to avoid TooManyRequests
 
